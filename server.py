@@ -88,7 +88,7 @@ class Episode(BaseModel):
     season_id: str
     show_id: str
     episode_number: int
-    title: str
+    title: Optional[str] = None
     description: Optional[str] = None
     video_url: str
     duration: Optional[int] = None  # in seconds
@@ -99,7 +99,7 @@ class EpisodeCreate(BaseModel):
     season_id: str
     show_id: str
     episode_number: int
-    title: str
+    title: Optional[str] = None
     description: Optional[str] = None
     video_url: str
     duration: Optional[int] = None
@@ -272,6 +272,18 @@ async def get_seasons(show_id: Optional[str] = None):
         if isinstance(season['created_at'], str):
             season['created_at'] = datetime.fromisoformat(season['created_at'])
     return seasons
+
+@api_router.put("/seasons/{season_id}", response_model=Season)
+async def update_season(season_id: str, season_update: SeasonCreate, current_admin: str = Depends(get_current_admin)):
+    result = await db.seasons.find_one({"id": season_id}, {"_id": 0})
+    if not result:
+        raise HTTPException(status_code=404, detail="Season not found")
+    
+    await db.seasons.update_one({"id": season_id}, {"$set": season_update.model_dump()})
+    updated_season = await db.seasons.find_one({"id": season_id}, {"_id": 0})
+    if isinstance(updated_season['created_at'], str):
+        updated_season['created_at'] = datetime.fromisoformat(updated_season['created_at'])
+    return updated_season
 
 @api_router.delete("/seasons/{season_id}")
 async def delete_season(season_id: str, current_admin: str = Depends(get_current_admin)):
