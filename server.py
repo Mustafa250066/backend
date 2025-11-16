@@ -69,6 +69,25 @@ class ShowCreate(BaseModel):
     description: Optional[str] = None
     poster_url: Optional[str] = None
 
+class Movie(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: Optional[str] = None
+    poster_url: Optional[str] = None
+    video_url: str
+    duration: Optional[int] = None  # in seconds
+    thumbnail_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class MovieCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    poster_url: Optional[str] = None
+    video_url: str
+    duration: Optional[int] = None
+    thumbnail_url: Optional[str] = None
+
 class Season(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -344,6 +363,52 @@ async def delete_episode(episode_id: str, current_admin: str = Depends(get_curre
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Episode not found")
     return {"message": "Episode deleted successfully"}
+
+# ============ Movie Routes ============
+
+@api_router.post("/movies", response_model=Movie)
+async def create_movie(movie: MovieCreate, current_admin: str = Depends(get_current_admin)):
+    movie_obj = Movie(**movie.model_dump())
+    doc = movie_obj.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.movies.insert_one(doc)
+    return movie_obj
+
+@api_router.get("/movies", response_model=List[Movie])
+async def get_movies():
+    movies = await db.movies.find({}, {"_id": 0}).to_list(1000)
+    for movie in movies:
+        if isinstance(movie['created_at'], str):
+            movie['created_at'] = datetime.fromisoformat(movie['created_at'])
+    return movies
+
+@api_router.get("/movies/{movie_id}", response_model=Movie)
+async def get_movie(movie_id: str):
+    movie = await db.movies.find_one({"id": movie_id}, {"_id": 0})
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    if isinstance(movie['created_at'], str):
+        movie['created_at'] = datetime.fromisoformat(movie['created_at'])
+    return movie
+
+@api_router.put("/movies/{movie_id}", response_model=Movie)
+async def update_movie(movie_id: str, movie_update: MovieCreate, current_admin: str = Depends(get_current_admin)):
+    result = await db.movies.find_one({"id": movie_id}, {"_id": 0})
+    if not result:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    
+    await db.movies.update_one({"id": movie_id}, {"$set": movie_update.model_dump()})
+    updated_movie = await db.movies.find_one({"id": movie_id}, {"_id": 0})
+    if isinstance(updated_movie['created_at'], str):
+        updated_movie['created_at'] = datetime.fromisoformat(updated_movie['created_at'])
+    return updated_movie
+
+@api_router.delete("/movies/{movie_id}")
+async def delete_movie(movie_id: str, current_admin: str = Depends(get_current_admin)):
+    result = await db.movies.delete_one({"id": movie_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    return {"message": "Movie deleted successfully"}
 
 # ============ Watch Progress Routes ============
 
